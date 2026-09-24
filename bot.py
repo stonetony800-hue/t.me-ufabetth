@@ -1,29 +1,55 @@
 import os
+import asyncio
 import logging
+
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# =========================
-# CONFIG
-# =========================
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", "8080"))
 
-if not TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is missing")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# CHECK BOT TOKEN
+# ============================================================
+
+if not TOKEN:
+    logger.error("BOT_TOKEN is NOT available in the environment.")
+    raise ValueError(
+        "BOT_TOKEN environment variable is missing. "
+        "Add BOT_TOKEN to your Railway service Variables."
+    )
+
+# Do NOT print the actual token.
+logger.info("BOT_TOKEN is available.")
+
+
+# ============================================================
+# TELEGRAM BOT
+# ============================================================
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
-# =========================
-# KEYBOARD
-# =========================
+# ============================================================
+# MAIN KEYBOARD
+# ============================================================
 
 def main_keyboard():
     return InlineKeyboardMarkup(
@@ -48,9 +74,9 @@ def main_keyboard():
     )
 
 
-# =========================
-# COMMANDS
-# =========================
+# ============================================================
+# /START
+# ============================================================
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
@@ -67,6 +93,10 @@ async def start_handler(message: types.Message):
     )
 
 
+# ============================================================
+# /HELP
+# ============================================================
+
 @dp.message(Command("help"))
 async def help_handler(message: types.Message):
 
@@ -80,6 +110,10 @@ async def help_handler(message: types.Message):
 
     await message.answer(text)
 
+
+# ============================================================
+# /INFO
+# ============================================================
 
 @dp.message(Command("info"))
 async def info_handler(message: types.Message):
@@ -96,6 +130,10 @@ async def info_handler(message: types.Message):
     )
 
 
+# ============================================================
+# /SUPPORT
+# ============================================================
+
 @dp.message(Command("support"))
 async def support_handler(message: types.Message):
 
@@ -106,11 +144,11 @@ async def support_handler(message: types.Message):
     )
 
 
-# =========================
-# BUTTONS
-# =========================
+# ============================================================
+# INFORMATION BUTTON
+# ============================================================
 
-@dp.callback_query(lambda c: c.data == "information")
+@dp.callback_query(lambda callback: callback.data == "information")
 async def information_callback(callback: types.CallbackQuery):
 
     await callback.message.edit_text(
@@ -123,7 +161,11 @@ async def information_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "help")
+# ============================================================
+# HELP BUTTON
+# ============================================================
+
+@dp.callback_query(lambda callback: callback.data == "help")
 async def help_callback(callback: types.CallbackQuery):
 
     await callback.message.edit_text(
@@ -137,7 +179,11 @@ async def help_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "support")
+# ============================================================
+# SUPPORT BUTTON
+# ============================================================
+
+@dp.callback_query(lambda callback: callback.data == "support")
 async def support_callback(callback: types.CallbackQuery):
 
     await callback.message.edit_text(
@@ -149,9 +195,9 @@ async def support_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# =========================
+# ============================================================
 # NORMAL TEXT MESSAGES
-# =========================
+# ============================================================
 
 @dp.message()
 async def text_handler(message: types.Message):
@@ -163,20 +209,24 @@ async def text_handler(message: types.Message):
     )
 
 
-# =========================
+# ============================================================
 # RAILWAY HEALTH SERVER
-# =========================
+# ============================================================
 
 async def health(request):
     return web.Response(text="Bot is running")
 
 
 async def start_web_server():
+
     app = web.Application()
+
+    # Railway health endpoint
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
 
     runner = web.AppRunner(app)
+
     await runner.setup()
 
     site = web.TCPSite(
@@ -187,23 +237,35 @@ async def start_web_server():
 
     await site.start()
 
+    logger.info(f"Health server running on port {PORT}")
 
-# =========================
+
+# ============================================================
 # MAIN
-# =========================
+# ============================================================
 
 async def main():
 
+    # Start Railway web server
     await start_web_server()
 
-    # Remove any old webhook so polling works correctly
+    # Remove any existing Telegram webhook.
+    # This allows polling to work correctly.
     await bot.delete_webhook(drop_pending_updates=True)
 
-    logging.info("Bot started")
+    logger.info("Telegram bot starting...")
+    logger.info("Polling started.")
 
+    # Start Telegram polling
     await dp.start_polling(bot)
 
 
+# ============================================================
+# RUN APPLICATION
+# ============================================================
+
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped.")
